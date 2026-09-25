@@ -66,8 +66,9 @@ type Client struct {
 	// same Qname, Qtype and Qclass to ensure only one would be in flight at a
 	// time.
 	//
-	// Deprecated: This is a no-op. Callers should implement their own in flight
-	// query caching if needed. See github.com/miekg/dns/issues/1449.
+	// Deprecated: This is a no-op. Use [QueryCoordinator], which coalesces
+	// identical concurrent queries (keeping per-caller contexts) and caches
+	// successful and negative responses. See github.com/miekg/dns/issues/1449.
 	SingleInflight bool
 }
 

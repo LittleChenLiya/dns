@@ -67,13 +67,13 @@ func packDataAAAA(aaaa net.IP, msg []byte, off int) (int, error) {
 
 // unpackHeader unpacks an RR header, returning the offset to the end of the header and a
 // re-sliced msg according to the expected length of the RR.
-func unpackHeader(msg []byte, off int) (rr RR_Header, off1 int, truncmsg []byte, err error) {
+func unpackHeader(msg []byte, off int, uc *unpackLimiter) (rr RR_Header, off1 int, truncmsg []byte, err error) {
 	hdr := RR_Header{}
 	if off == len(msg) {
 		return hdr, off, msg, nil
 	}
 
-	hdr.Name, off, err = UnpackDomainName(msg, off)
+	hdr.Name, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return hdr, len(msg), msg, err
 	}
@@ -641,7 +641,7 @@ func packDataSVCB(pairs []SVCBKeyValue, msg []byte, off int) (int, error) {
 	return off, nil
 }
 
-func unpackDataDomainNames(msg []byte, off, end int) ([]string, int, error) {
+func unpackDataDomainNames(msg []byte, off, end int, uc *unpackLimiter) ([]string, int, error) {
 	var (
 		servers []string
 		s       string
@@ -651,7 +651,7 @@ func unpackDataDomainNames(msg []byte, off, end int) ([]string, int, error) {
 		return nil, len(msg), &Error{err: "overflow unpacking domain names"}
 	}
 	for off < end {
-		s, off, err = UnpackDomainName(msg, off)
+		s, off, err = unpackDomainName(msg, off, uc)
 		if err != nil {
 			return servers, len(msg), err
 		}
@@ -799,7 +799,7 @@ func unpackDataAplPrefix(msg []byte, off int) (APLPrefix, int, error) {
 	}, off, nil
 }
 
-func unpackIPSECGateway(msg []byte, off int, gatewayType uint8) (net.IP, string, int, error) {
+func unpackIPSECGateway(msg []byte, off int, gatewayType uint8, uc *unpackLimiter) (net.IP, string, int, error) {
 	var retAddr net.IP
 	var retString string
 	var err error
@@ -811,7 +811,7 @@ func unpackIPSECGateway(msg []byte, off int, gatewayType uint8) (net.IP, string,
 	case IPSECGatewayIPv6:
 		retAddr, off, err = unpackDataAAAA(msg, off)
 	case IPSECGatewayHost:
-		retString, off, err = UnpackDomainName(msg, off)
+		retString, off, err = unpackDomainName(msg, off, uc)
 	}
 
 	return retAddr, retString, off, err

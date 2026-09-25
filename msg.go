@@ -69,7 +69,136 @@ var (
 	ErrSig           error = &Error{err: "bad signature"} // ErrSig indicates that a signature can not be cryptographically validated.
 	ErrSoa           error = &Error{err: "no SOA"}        // ErrSOA indicates that no SOA RR was seen when doing zone transfers.
 	ErrTime          error = &Error{err: "bad time"}      // ErrTime indicates a timing error in TSIG authentication.
+	// ErrNameLimit indicates the decompressed domain name octets limit
+	// configured with UnpackLimits.MaxDomainNameOctets was exceeded.
+	ErrNameLimit error = &Error{err: "too many decompressed domain name octets"}
+	// ErrRecordLimit indicates the resource record count limit configured
+	// with UnpackLimits.MaxResourceRecords was exceeded.
+	ErrRecordLimit error = &Error{err: "too many resource records"}
+	// ErrPointerLimit indicates the compression pointer limit configured
+	// with UnpackLimits.MaxCompressionPointers was exceeded.
+	ErrPointerLimit error = &Error{err: "too many compression pointers followed"}
+	// ErrCompressionLoop indicates a compression pointer looped back to a
+	// pointer that was already followed while unpacking a domain name.
+	ErrCompressionLoop error = &Error{err: "compression pointer loop"}
 )
+
+// UnpackLimits configures the limits enforced by Msg.UnpackWithLimits while
+// unpacking a wire-format message. A zero or negative value for any field
+// disables that particular limit.
+//
+// All limits are charged as the message is actually consumed while parsing;
+// the counts declared in the message header are never trusted. Each
+// expansion of a compressed domain name is charged in full, every time the
+// name is referenced.
+type UnpackLimits struct {
+	// MaxDomainNameOctets limits the total number of decompressed domain
+	// name octets (in wire format, including label length octets and the
+	// terminating root label) consumed while unpacking the message.
+	MaxDomainNameOctets int
+	// MaxResourceRecords limits the total number of resource records
+	// unpacked across the answer, authority and additional sections.
+	MaxResourceRecords int
+	// MaxCompressionPointers limits the total number of compression
+	// pointers followed while unpacking the message.
+	MaxCompressionPointers int
+}
+
+// LimitError is returned by Msg.UnpackWithLimits when one of the configured
+// UnpackLimits is exceeded, or when a compression pointer loops or points
+// outside the message. Offset is the offset in the wire-format message at
+// which the violation was detected. The underlying cause can be tested with
+// errors.Is against ErrNameLimit, ErrRecordLimit, ErrPointerLimit,
+// ErrCompressionLoop or ErrBuf.
+type LimitError struct {
+	Offset int   // Offset in the message where the violation was detected.
+	Err    error // The limit that was exceeded or the fault that was found.
+}
+
+// Error implements the error interface.
+func (e *LimitError) Error() string {
+	return e.Err.Error() + " at offset " + strconv.Itoa(e.Offset)
+}
+
+// Unwrap returns the underlying cause of e.
+func (e *LimitError) Unwrap() error { return e.Err }
+
+// unpackLimiter tracks the remaining budget while unpacking a message with
+// Msg.UnpackWithLimits. Its methods are no-ops on a nil receiver, which lets
+// the shared unpacking code run without limits when no UnpackLimits were
+// configured.
+type unpackLimiter struct {
+	nameOctets int // remaining decompressed domain name octets, -1 = unlimited
+	records    int // remaining resource records, -1 = unlimited
+	pointers   int // remaining compression pointers, -1 = unlimited
+}
+
+func newUnpackLimiter(l UnpackLimits) *unpackLimiter {
+	return &unpackLimiter{
+		nameOctets: limitOrUnlimited(l.MaxDomainNameOctets),
+		records:    limitOrUnlimited(l.MaxResourceRecords),
+		pointers:   limitOrUnlimited(l.MaxCompressionPointers),
+	}
+}
+
+func limitOrUnlimited(v int) int {
+	if v <= 0 {
+		return -1
+	}
+	return v
+}
+
+// chargeNameOctets charges n decompressed domain name octets consumed at
+// message offset off.
+func (l *unpackLimiter) chargeNameOctets(n, off int) error {
+	if l == nil || l.nameOctets < 0 {
+		return nil
+	}
+	if n > l.nameOctets {
+		return &LimitError{Offset: off, Err: ErrNameLimit}
+	}
+	l.nameOctets -= n
+	return nil
+}
+
+// chargeRecord charges a single resource record consumed at message offset
+// off.
+func (l *unpackLimiter) chargeRecord(off int) error {
+	if l == nil || l.records < 0 {
+		return nil
+	}
+	if l.records == 0 {
+		return &LimitError{Offset: off, Err: ErrRecordLimit}
+	}
+	l.records--
+	return nil
+}
+
+// followPointer charges a compression pointer located at message offset
+// ptrOff that jumps to target. It reports pointers jumping outside the
+// message and pointer loops, both located at ptrOff.
+// The seen set holds the pointer locations already followed while
+// unpacking the current domain name; following the same location twice
+// means the pointers loop.
+func (l *unpackLimiter) followPointer(ptrOff, target, lenmsg int, seen map[int]struct{}) error {
+	if l == nil {
+		return nil
+	}
+	if l.pointers >= 0 {
+		if l.pointers == 0 {
+			return &LimitError{Offset: ptrOff, Err: ErrPointerLimit}
+		}
+		l.pointers--
+	}
+	if target < 0 || target >= lenmsg {
+		return &LimitError{Offset: ptrOff, Err: ErrBuf}
+	}
+	if _, ok := seen[ptrOff]; ok {
+		return &LimitError{Offset: ptrOff, Err: ErrCompressionLoop}
+	}
+	seen[ptrOff] = struct{}{}
+	return nil
+}
 
 // Id by default returns a 16-bit random number to be used as a message id. The
 // number is drawn from a cryptographically secure random number generator.
@@ -379,11 +508,21 @@ func isRootLabel(s string, bs []byte, off, end int) bool {
 // When an error is encountered, the unpacked name will be discarded
 // and len(msg) will be returned as the offset.
 func UnpackDomainName(msg []byte, off int) (string, int, error) {
+	return unpackDomainName(msg, off, nil)
+}
+
+// unpackDomainName is UnpackDomainName, additionally charging decompressed
+// name octets and followed compression pointers against uc. A nil uc
+// disables all limit accounting.
+func unpackDomainName(msg []byte, off int, uc *unpackLimiter) (string, int, error) {
 	s := make([]byte, 0, maxDomainNamePresentationLength)
 	off1 := 0
 	lenmsg := len(msg)
 	budget := maxDomainNameWireOctets
 	ptr := 0 // number of pointers followed
+	// Pointer locations followed while unpacking this name, used to detect
+	// compression loops when limits are enforced. Allocated lazily.
+	var seen map[int]struct{}
 Loop:
 	for {
 		if off >= lenmsg {
@@ -395,6 +534,9 @@ Loop:
 		case 0x00:
 			if c == 0x00 {
 				// end of name
+				if err := uc.chargeNameOctets(1, off-1); err != nil {
+					return "", lenmsg, err
+				}
 				break Loop
 			}
 			// literal string
@@ -404,6 +546,9 @@ Loop:
 			budget -= c + 1 // +1 for the label separator
 			if budget <= 0 {
 				return "", lenmsg, ErrLongDomain
+			}
+			if err := uc.chargeNameOctets(c+1, off-1); err != nil {
+				return "", lenmsg, err
 			}
 			for _, b := range msg[off : off+c] {
 				if isDomainNameLabelSpecial(b) {
@@ -436,7 +581,14 @@ Loop:
 			// pointer should guarantee that it advances and points forwards at least
 			// but the condition on previous three lines guarantees that it's
 			// at least loop-free
-			off = (c^0xC0)<<8 | int(c1)
+			target := (c^0xC0)<<8 | int(c1)
+			if uc != nil && seen == nil {
+				seen = make(map[int]struct{})
+			}
+			if err := uc.followPointer(off-2, target, lenmsg, seen); err != nil {
+				return "", lenmsg, err
+			}
+			off = target
 		default:
 			// 0x80 and 0x40 are reserved
 			return "", lenmsg, ErrRdata
@@ -606,17 +758,29 @@ func packRR(rr RR, msg []byte, off int, compression compressionMap, compress boo
 
 // UnpackRR unpacks msg[off:] into an RR.
 func UnpackRR(msg []byte, off int) (rr RR, off1 int, err error) {
-	h, off, msg, err := unpackHeader(msg, off)
+	return unpackRR(msg, off, nil)
+}
+
+// unpackRR is UnpackRR, additionally charging name and pointer usage
+// against uc. A nil uc disables all limit accounting.
+func unpackRR(msg []byte, off int, uc *unpackLimiter) (rr RR, off1 int, err error) {
+	h, off, msg, err := unpackHeader(msg, off, uc)
 	if err != nil {
 		return nil, len(msg), err
 	}
 
-	return UnpackRRWithHeader(h, msg, off)
+	return unpackRRWithHeader(h, msg, off, uc)
 }
 
 // UnpackRRWithHeader unpacks the record type specific payload given an existing
 // RR_Header.
 func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err error) {
+	return unpackRRWithHeader(h, msg, off, nil)
+}
+
+// unpackRRWithHeader is UnpackRRWithHeader, additionally charging name and
+// pointer usage against uc. A nil uc disables all limit accounting.
+func unpackRRWithHeader(h RR_Header, msg []byte, off int, uc *unpackLimiter) (rr RR, off1 int, err error) {
 	if newFn, ok := TypeToRR[h.Rrtype]; ok {
 		rr = newFn()
 		*rr.Header() = h
@@ -637,7 +801,7 @@ func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err 
 		return rr, off, nil
 	}
 
-	off, err = rr.unpack(msg, off)
+	off, err = rr.unpack(msg, off, uc)
 	if err != nil {
 		return nil, end, err
 	}
@@ -650,19 +814,25 @@ func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err 
 
 // unpackRRslice unpacks msg[off:] into an []RR.
 // If we cannot unpack the whole array, then it will return nil
-func unpackRRslice(l int, msg []byte, off int) (dst1 []RR, off1 int, err error) {
+func unpackRRslice(l int, msg []byte, off int, uc *unpackLimiter) (dst1 []RR, off1 int, err error) {
 	var r RR
 	// Don't pre-allocate, l may be under attacker control
 	var dst []RR
 	for i := 0; i < l; i++ {
 		off1 := off
-		r, off, err = UnpackRR(msg, off)
+		r, off, err = unpackRR(msg, off, uc)
 		if err != nil {
 			off = len(msg)
 			break
 		}
 		// If offset does not increase anymore, l is a lie
 		if off1 == off {
+			break
+		}
+		// Charge the record only after it was actually consumed, the
+		// count in the header cannot be trusted.
+		if err = uc.chargeRecord(off1); err != nil {
+			off = len(msg)
 			break
 		}
 		dst = append(dst, r)
@@ -824,7 +994,7 @@ func (dns *Msg) packBufferWithCompressionMap(buf []byte, compression compression
 	return msg[:off], nil
 }
 
-func (dns *Msg) unpack(dh Header, msg []byte, off int) (err error) {
+func (dns *Msg) unpack(dh Header, msg []byte, off int, uc *unpackLimiter) (err error) {
 	// If we are at the end of the message we should return *just* the
 	// header. This can still be useful to the caller. 9.9.9.9 sends these
 	// when responding with REFUSED for instance.
@@ -841,7 +1011,7 @@ func (dns *Msg) unpack(dh Header, msg []byte, off int) (err error) {
 	for i := 0; i < int(dh.Qdcount); i++ {
 		off1 := off
 		var q Question
-		q, off, err = unpackQuestion(msg, off)
+		q, off, err = unpackQuestion(msg, off, uc)
 		if err != nil {
 			return err
 		}
@@ -852,16 +1022,16 @@ func (dns *Msg) unpack(dh Header, msg []byte, off int) (err error) {
 		dns.Question = append(dns.Question, q)
 	}
 
-	dns.Answer, off, err = unpackRRslice(int(dh.Ancount), msg, off)
+	dns.Answer, off, err = unpackRRslice(int(dh.Ancount), msg, off, uc)
 	// The header counts might have been wrong so we need to update it
 	dh.Ancount = uint16(len(dns.Answer))
 	if err == nil {
-		dns.Ns, off, err = unpackRRslice(int(dh.Nscount), msg, off)
+		dns.Ns, off, err = unpackRRslice(int(dh.Nscount), msg, off, uc)
 	}
 	// The header counts might have been wrong so we need to update it
 	dh.Nscount = uint16(len(dns.Ns))
 	if err == nil {
-		dns.Extra, _, err = unpackRRslice(int(dh.Arcount), msg, off)
+		dns.Extra, _, err = unpackRRslice(int(dh.Arcount), msg, off, uc)
 	}
 	// The header counts might have been wrong so we need to update it
 	dh.Arcount = uint16(len(dns.Extra))
@@ -887,7 +1057,42 @@ func (dns *Msg) Unpack(msg []byte) (err error) {
 	}
 
 	dns.setHdr(dh)
-	return dns.unpack(dh, msg, off)
+	return dns.unpack(dh, msg, off, nil)
+}
+
+// UnpackWithLimits unpacks a binary message to a Msg structure, enforcing
+// the given limits while parsing. It behaves exactly like Unpack, except
+// that unpacking fails with a *LimitError as soon as one of the limits is
+// exceeded, a compression pointer loops, or a compression pointer targets
+// an offset outside the message. Limits are charged as the message is
+// actually consumed; the counts declared in the message header are not
+// trusted. Every expansion of a compressed domain name is charged in full,
+// including repeated references to the same compressed name.
+//
+// When UnpackWithLimits returns an error, dns is left unmodified. Use
+// errors.Is with ErrNameLimit, ErrRecordLimit, ErrPointerLimit,
+// ErrCompressionLoop or ErrBuf to test the cause of a *LimitError, and its
+// Offset field to locate the violation in the message.
+func (dns *Msg) UnpackWithLimits(msg []byte, limits UnpackLimits) error {
+	dh, off, err := unpackMsgHdr(msg, 0)
+	if err != nil {
+		return err
+	}
+
+	// Unpack into a temporary message first, so that dns is left
+	// unmodified when unpacking fails.
+	tmp := new(Msg)
+	tmp.setHdr(dh)
+	if err := tmp.unpack(dh, msg, off, newUnpackLimiter(limits)); err != nil {
+		return err
+	}
+
+	dns.MsgHdr = tmp.MsgHdr
+	dns.Question = tmp.Question
+	dns.Answer = tmp.Answer
+	dns.Ns = tmp.Ns
+	dns.Extra = tmp.Extra
+	return nil
 }
 
 // Convert a complete message to a string with dig-like output.
@@ -1118,12 +1323,12 @@ func (q *Question) pack(msg []byte, off int, compression compressionMap, compres
 	return off, nil
 }
 
-func unpackQuestion(msg []byte, off int) (Question, int, error) {
+func unpackQuestion(msg []byte, off int, uc *unpackLimiter) (Question, int, error) {
 	var (
 		q   Question
 		err error
 	)
-	q.Name, off, err = UnpackDomainName(msg, off)
+	q.Name, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return q, off, fmt.Errorf("bad question name: %w", err)
 	}

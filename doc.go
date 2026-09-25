@@ -288,5 +288,35 @@ the shared secret approach in TSIG. Supported algorithms: ECDSAP256SHA256,
 ECDSAP384SHA384, RSASHA1, RSASHA256 and RSASHA512.
 
 Signing subsequent messages in multi-message sessions is not implemented.
+
+# Unpacking Limits
+
+Msg.Unpack unpacks wire-format messages without any message-wide limit on
+the work performed: a small message can expand to many megabytes of domain
+names by repeatedly referencing a compressed name. Msg.UnpackWithLimits
+parses a message exactly like Msg.Unpack does, but enforces the budgets
+configured in UnpackLimits while parsing: the total number of decompressed
+domain name octets, the total number of resource records, and the total
+number of compression pointers followed. Budgets are charged as the message
+is actually consumed; the counts declared in the message header are not
+trusted, and every expansion of a compressed name is charged in full,
+including repeated references to the same name.
+
+When a limit is exceeded, or a compression pointer loops or points outside
+the message, UnpackWithLimits returns a *LimitError that records the
+message offset of the violation, and the receiving Msg is left unmodified.
+The cause of a *LimitError can be tested with errors.Is against
+ErrNameLimit, ErrRecordLimit, ErrPointerLimit, ErrCompressionLoop or
+ErrBuf:
+
+	var m dns.Msg
+	err := m.UnpackWithLimits(buf, dns.UnpackLimits{
+		MaxDomainNameOctets:    1 << 20,
+		MaxResourceRecords:     4096,
+		MaxCompressionPointers: 4096,
+	})
+	if limitErr := (*dns.LimitError)(nil); errors.As(err, &limitErr) {
+		// limitErr.Offset locates the violation in buf.
+	}
 */
 package dns

@@ -201,7 +201,7 @@ if rr.%s != "-" {
 		o := scope.Lookup(name)
 		st, _ := getTypeStruct(o.Type(), scope)
 
-		fmt.Fprintf(b, "func (rr *%s) unpack(msg []byte, off int) (off1 int, err error) {\n", name)
+		fmt.Fprintf(b, "func (rr *%s) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {\n", name)
 		fmt.Fprint(b, `rdStart := off
 _ = rdStart
 
@@ -253,7 +253,7 @@ return off, err
 				case `dns:"pairs"`:
 					o("rr.%s, off, err = unpackDataSVCB(msg, off)\n")
 				case `dns:"domain-name"`:
-					o("rr.%s, off, err = unpackDataDomainNames(msg, off, rdStart + int(rr.Hdr.Rdlength))\n")
+					o("rr.%s, off, err = unpackDataDomainNames(msg, off, rdStart + int(rr.Hdr.Rdlength), uc)\n")
 				case `dns:"apl"`:
 					o("rr.%s, off, err = unpackDataApl(msg, off)\n")
 				default:
@@ -267,7 +267,7 @@ return off, err
 			case `dns:"cdomain-name"`:
 				fallthrough
 			case `dns:"domain-name"`:
-				o("rr.%s, off, err = UnpackDomainName(msg, off)\n")
+				o("rr.%s, off, err = unpackDomainName(msg, off, uc)\n")
 			case `dns:"a"`:
 				o("rr.%s, off, err = unpackDataA(msg, off)\n")
 			case `dns:"aaaa"`:
@@ -287,7 +287,7 @@ return off, err
 			case `dns:"octet"`:
 				o("rr.%s, off, err = unpackStringOctet(msg, off)\n")
 			case `dns:"ipsechost"`, `dns:"amtrelayhost"`:
-				o("rr.GatewayAddr, rr.%s, off, err = unpackIPSECGateway(msg, off, rr.GatewayType)\n")
+				o("rr.GatewayAddr, rr.%s, off, err = unpackIPSECGateway(msg, off, rr.GatewayType, uc)\n")
 			case "":
 				switch st.Field(i).Type().(*types.Basic).Kind() {
 				case types.Uint8:

@@ -1218,7 +1218,7 @@ func (rr *ZONEMD) pack(msg []byte, off int, compression compressionMap, compress
 
 // unpack*() functions
 
-func (rr *A) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *A) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1229,7 +1229,7 @@ func (rr *A) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *AAAA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *AAAA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1240,7 +1240,7 @@ func (rr *AAAA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *AFSDB) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *AFSDB) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1251,14 +1251,14 @@ func (rr *AFSDB) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Hostname, off, err = UnpackDomainName(msg, off)
+	rr.Hostname, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("AFSDB.Hostname: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *AMTRELAY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *AMTRELAY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1279,21 +1279,21 @@ func (rr *AMTRELAY) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.GatewayAddr, rr.GatewayHost, off, err = unpackIPSECGateway(msg, off, rr.GatewayType)
+	rr.GatewayAddr, rr.GatewayHost, off, err = unpackIPSECGateway(msg, off, rr.GatewayType, uc)
 	if err != nil {
 		return off, fmt.Errorf("AMTRELAY.GatewayHost: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *ANY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *ANY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
 	return off, nil
 }
 
-func (rr *APL) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *APL) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1304,7 +1304,7 @@ func (rr *APL) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *AVC) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *AVC) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1315,7 +1315,7 @@ func (rr *AVC) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *CAA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CAA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1340,7 +1340,7 @@ func (rr *CAA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *CDNSKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CDNSKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1372,7 +1372,7 @@ func (rr *CDNSKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *CDS) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CDS) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1404,7 +1404,7 @@ func (rr *CDS) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *CERT) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CERT) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1436,18 +1436,18 @@ func (rr *CERT) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *CNAME) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CNAME) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Target, off, err = UnpackDomainName(msg, off)
+	rr.Target, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("CNAME.Target: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *CSYNC) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *CSYNC) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1472,7 +1472,7 @@ func (rr *CSYNC) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *DHCID) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *DHCID) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1483,7 +1483,7 @@ func (rr *DHCID) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *DLV) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *DLV) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1515,18 +1515,18 @@ func (rr *DLV) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *DNAME) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *DNAME) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Target, off, err = UnpackDomainName(msg, off)
+	rr.Target, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("DNAME.Target: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *DNSKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *DNSKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1558,7 +1558,7 @@ func (rr *DNSKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *DS) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *DS) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1590,7 +1590,7 @@ func (rr *DS) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *EID) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *EID) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1601,7 +1601,7 @@ func (rr *EID) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *EUI48) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *EUI48) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1612,7 +1612,7 @@ func (rr *EUI48) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *EUI64) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *EUI64) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1623,7 +1623,7 @@ func (rr *EUI64) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *GID) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *GID) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1634,7 +1634,7 @@ func (rr *GID) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *GPOS) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *GPOS) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1659,7 +1659,7 @@ func (rr *GPOS) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *HINFO) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *HINFO) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1677,7 +1677,7 @@ func (rr *HINFO) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *HIP) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *HIP) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1710,14 +1710,14 @@ func (rr *HIP) unpack(msg []byte, off int) (off1 int, err error) {
 	if err != nil {
 		return off, err
 	}
-	rr.RendezvousServers, off, err = unpackDataDomainNames(msg, off, rdStart+int(rr.Hdr.Rdlength))
+	rr.RendezvousServers, off, err = unpackDataDomainNames(msg, off, rdStart+int(rr.Hdr.Rdlength), uc)
 	if err != nil {
 		return off, fmt.Errorf("HIP.RendezvousServers: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *HTTPS) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *HTTPS) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1728,7 +1728,7 @@ func (rr *HTTPS) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Target, off, err = UnpackDomainName(msg, off)
+	rr.Target, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("HTTPS.Target: %w", err)
 	}
@@ -1742,7 +1742,7 @@ func (rr *HTTPS) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *IPSECKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *IPSECKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1770,7 +1770,7 @@ func (rr *IPSECKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.GatewayAddr, rr.GatewayHost, off, err = unpackIPSECGateway(msg, off, rr.GatewayType)
+	rr.GatewayAddr, rr.GatewayHost, off, err = unpackIPSECGateway(msg, off, rr.GatewayType, uc)
 	if err != nil {
 		return off, fmt.Errorf("IPSECKEY.GatewayHost: %w", err)
 	}
@@ -1784,7 +1784,7 @@ func (rr *IPSECKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *ISDN) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *ISDN) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1802,7 +1802,7 @@ func (rr *ISDN) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *KEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *KEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1834,7 +1834,7 @@ func (rr *KEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *KX) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *KX) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1845,14 +1845,14 @@ func (rr *KX) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Exchanger, off, err = UnpackDomainName(msg, off)
+	rr.Exchanger, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("KX.Exchanger: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *L32) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *L32) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1870,7 +1870,7 @@ func (rr *L32) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *L64) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *L64) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1888,7 +1888,7 @@ func (rr *L64) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *LOC) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *LOC) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1941,7 +1941,7 @@ func (rr *LOC) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *LP) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *LP) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -1952,87 +1952,87 @@ func (rr *LP) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Fqdn, off, err = UnpackDomainName(msg, off)
+	rr.Fqdn, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("LP.Fqdn: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MB) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MB) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Mb, off, err = UnpackDomainName(msg, off)
+	rr.Mb, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MB.Mb: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MD) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MD) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Md, off, err = UnpackDomainName(msg, off)
+	rr.Md, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MD.Md: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MF) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MF) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Mf, off, err = UnpackDomainName(msg, off)
+	rr.Mf, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MF.Mf: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MG) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MG) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Mg, off, err = UnpackDomainName(msg, off)
+	rr.Mg, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MG.Mg: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MINFO) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MINFO) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Rmail, off, err = UnpackDomainName(msg, off)
+	rr.Rmail, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MINFO.Rmail: %w", err)
 	}
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Email, off, err = UnpackDomainName(msg, off)
+	rr.Email, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MINFO.Email: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MR) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MR) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Mr, off, err = UnpackDomainName(msg, off)
+	rr.Mr, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MR.Mr: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *MX) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *MX) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2043,14 +2043,14 @@ func (rr *MX) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Mx, off, err = UnpackDomainName(msg, off)
+	rr.Mx, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("MX.Mx: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *NAPTR) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NAPTR) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2089,14 +2089,14 @@ func (rr *NAPTR) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Replacement, off, err = UnpackDomainName(msg, off)
+	rr.Replacement, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("NAPTR.Replacement: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *NID) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NID) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2114,7 +2114,7 @@ func (rr *NID) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NIMLOC) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NIMLOC) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2125,7 +2125,7 @@ func (rr *NIMLOC) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NINFO) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NINFO) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2136,33 +2136,33 @@ func (rr *NINFO) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NS) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NS) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Ns, off, err = UnpackDomainName(msg, off)
+	rr.Ns, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("NS.Ns: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *NSAPPTR) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NSAPPTR) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Ptr, off, err = UnpackDomainName(msg, off)
+	rr.Ptr, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("NSAPPTR.Ptr: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *NSEC) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NSEC) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.NextDomain, off, err = UnpackDomainName(msg, off)
+	rr.NextDomain, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("NSEC.NextDomain: %w", err)
 	}
@@ -2176,7 +2176,7 @@ func (rr *NSEC) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NSEC3) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NSEC3) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2230,7 +2230,7 @@ func (rr *NSEC3) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NSEC3PARAM) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NSEC3PARAM) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2269,7 +2269,7 @@ func (rr *NSEC3PARAM) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NULL) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NULL) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2280,18 +2280,18 @@ func (rr *NULL) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *NXNAME) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NXNAME) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
 	return off, nil
 }
 
-func (rr *NXT) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *NXT) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.NextDomain, off, err = UnpackDomainName(msg, off)
+	rr.NextDomain, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("NXT.NextDomain: %w", err)
 	}
@@ -2305,7 +2305,7 @@ func (rr *NXT) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *OPENPGPKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *OPENPGPKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2316,7 +2316,7 @@ func (rr *OPENPGPKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *OPT) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *OPT) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2327,18 +2327,18 @@ func (rr *OPT) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *PTR) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *PTR) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Ptr, off, err = UnpackDomainName(msg, off)
+	rr.Ptr, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("PTR.Ptr: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *PX) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *PX) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2349,21 +2349,21 @@ func (rr *PX) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Map822, off, err = UnpackDomainName(msg, off)
+	rr.Map822, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("PX.Map822: %w", err)
 	}
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Mapx400, off, err = UnpackDomainName(msg, off)
+	rr.Mapx400, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("PX.Mapx400: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *RESINFO) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RESINFO) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2374,7 +2374,7 @@ func (rr *RESINFO) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *RFC3597) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RFC3597) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2385,7 +2385,7 @@ func (rr *RFC3597) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *RKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2417,25 +2417,25 @@ func (rr *RKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *RP) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RP) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Mbox, off, err = UnpackDomainName(msg, off)
+	rr.Mbox, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("RP.Mbox: %w", err)
 	}
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Txt, off, err = UnpackDomainName(msg, off)
+	rr.Txt, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("RP.Txt: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *RRSIG) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RRSIG) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2488,7 +2488,7 @@ func (rr *RRSIG) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.SignerName, off, err = UnpackDomainName(msg, off)
+	rr.SignerName, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("RRSIG.SignerName: %w", err)
 	}
@@ -2502,7 +2502,7 @@ func (rr *RRSIG) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *RT) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *RT) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2513,14 +2513,14 @@ func (rr *RT) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Host, off, err = UnpackDomainName(msg, off)
+	rr.Host, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("RT.Host: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *SIG) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SIG) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2573,7 +2573,7 @@ func (rr *SIG) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.SignerName, off, err = UnpackDomainName(msg, off)
+	rr.SignerName, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("SIG.SignerName: %w", err)
 	}
@@ -2587,7 +2587,7 @@ func (rr *SIG) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *SMIMEA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SMIMEA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2619,18 +2619,18 @@ func (rr *SMIMEA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *SOA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SOA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Ns, off, err = UnpackDomainName(msg, off)
+	rr.Ns, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("SOA.Ns: %w", err)
 	}
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Mbox, off, err = UnpackDomainName(msg, off)
+	rr.Mbox, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("SOA.Mbox: %w", err)
 	}
@@ -2672,7 +2672,7 @@ func (rr *SOA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *SPF) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SPF) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2683,7 +2683,7 @@ func (rr *SPF) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *SRV) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SRV) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2708,14 +2708,14 @@ func (rr *SRV) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Target, off, err = UnpackDomainName(msg, off)
+	rr.Target, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("SRV.Target: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *SSHFP) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SSHFP) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2740,7 +2740,7 @@ func (rr *SSHFP) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *SVCB) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *SVCB) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2751,7 +2751,7 @@ func (rr *SVCB) unpack(msg []byte, off int) (off1 int, err error) {
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.Target, off, err = UnpackDomainName(msg, off)
+	rr.Target, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("SVCB.Target: %w", err)
 	}
@@ -2765,7 +2765,7 @@ func (rr *SVCB) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *TA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2797,29 +2797,29 @@ func (rr *TA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *TALINK) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TALINK) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.PreviousName, off, err = UnpackDomainName(msg, off)
+	rr.PreviousName, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("TALINK.PreviousName: %w", err)
 	}
 	if off == len(msg) {
 		return off, nil
 	}
-	rr.NextName, off, err = UnpackDomainName(msg, off)
+	rr.NextName, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("TALINK.NextName: %w", err)
 	}
 	return off, nil
 }
 
-func (rr *TKEY) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TKEY) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Algorithm, off, err = UnpackDomainName(msg, off)
+	rr.Algorithm, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("TKEY.Algorithm: %w", err)
 	}
@@ -2879,7 +2879,7 @@ func (rr *TKEY) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *TLSA) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TLSA) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2911,11 +2911,11 @@ func (rr *TLSA) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *TSIG) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TSIG) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
-	rr.Algorithm, off, err = UnpackDomainName(msg, off)
+	rr.Algorithm, off, err = unpackDomainName(msg, off, uc)
 	if err != nil {
 		return off, fmt.Errorf("TSIG.Algorithm: %w", err)
 	}
@@ -2975,7 +2975,7 @@ func (rr *TSIG) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *TXT) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *TXT) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2986,7 +2986,7 @@ func (rr *TXT) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *UID) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *UID) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -2997,7 +2997,7 @@ func (rr *UID) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *UINFO) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *UINFO) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -3008,7 +3008,7 @@ func (rr *UINFO) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *URI) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *URI) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -3033,7 +3033,7 @@ func (rr *URI) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *X25) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *X25) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 
@@ -3044,7 +3044,7 @@ func (rr *X25) unpack(msg []byte, off int) (off1 int, err error) {
 	return off, nil
 }
 
-func (rr *ZONEMD) unpack(msg []byte, off int) (off1 int, err error) {
+func (rr *ZONEMD) unpack(msg []byte, off int, uc *unpackLimiter) (off1 int, err error) {
 	rdStart := off
 	_ = rdStart
 

@@ -343,17 +343,17 @@ func stripTsig(msg []byte) ([]byte, *TSIG, error) {
 	}
 
 	for i := 0; i < int(dh.Qdcount); i++ {
-		_, off, err = unpackQuestion(msg, off)
+		_, off, err = unpackQuestion(msg, off, nil)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
-	_, off, err = unpackRRslice(int(dh.Ancount), msg, off)
+	_, off, err = unpackRRslice(int(dh.Ancount), msg, off, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	_, off, err = unpackRRslice(int(dh.Nscount), msg, off)
+	_, off, err = unpackRRslice(int(dh.Nscount), msg, off, nil)
 	if err != nil {
 		return nil, nil, err
 	}

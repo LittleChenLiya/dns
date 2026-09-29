@@ -103,6 +103,7 @@ Send pull request if you want to be listed here.
 - Fast
 - Server side programming (mimicking the net/http package)
 - Client side programming
+- Reusable query coordinator (`QueryCoordinator`) with singleflight, per-caller contexts and positive/negative response caching
 - DNSSEC: signing, validating and key generation for DSA, RSA, ECDSA and Ed25519
 - EDNS0, NSID, Cookies
 - AXFR/IXFR
@@ -143,6 +144,7 @@ _all of them_
 - 1996 - DNS notify
 - 2136 - DNS Update (dynamic updates)
 - 2181 - RRset definition - there is no RRset type though, just []RR
+- 2308 - Negative caching of DNS queries (used by `QueryCoordinator`)
 - 2537 - RSAMD5 DNS keys
 - 2065 - DNSSEC (updated in later RFCs)
 - 2671 - EDNS record

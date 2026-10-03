@@ -147,3 +147,31 @@ func ExamplePrivateHandle() {
 	// ;; ANSWER SECTION:
 	// miek.nl.	3600	IN	APAIR	1.2.3.4 1.2.3.5
 }
+
+// Prepare an EDNS(0) query so its packed length is a multiple of a block size.
+func ExampleMsg_PreparePadding() {
+	m := new(dns.Msg)
+	m.SetQuestion("www.example.com.", dns.TypeA)
+	m.Compress = true
+	m.SetEdns0(4096, true)
+	opt := m.IsEdns0()
+	opt.Option = append(opt.Option,
+		&dns.EDNS0_NSID{Code: dns.EDNS0NSID, Nsid: "aa"},
+		&dns.EDNS0_COOKIE{Code: dns.EDNS0COOKIE, Cookie: "0102030405060708"},
+	)
+
+	before, err := m.Pack()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := m.PreparePadding(128, 0); err != nil {
+		log.Fatal(err)
+	}
+	after, err := m.Pack()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("before=%d after=%d aligned=%v\n", len(before), len(after), len(after)%128 == 0)
+	// Output: before=61 after=128 aligned=true
+}

@@ -773,6 +773,132 @@ func (e *EDNS0_PADDING) unpack(b []byte) error { e.Padding = cloneSlice(b); retu
 func (e *EDNS0_PADDING) String() string        { return fmt.Sprintf("%0X", e.Padding) }
 func (e *EDNS0_PADDING) copy() EDNS0           { return &EDNS0_PADDING{cloneSlice(e.Padding)} }
 
+// Errors returned by Msg.PreparePadding.
+var (
+	// ErrPaddingBlockSize is returned when the requested padding block size is zero.
+	ErrPaddingBlockSize = errors.New("dns: padding block size must be greater than zero")
+	// ErrPaddingMultipleOPT is returned when the message contains more than one OPT RR.
+	ErrPaddingMultipleOPT = errors.New("dns: padding requires at most one OPT RR")
+	// ErrPaddingTooLarge is returned when aligning the message to the block size
+	// would make the packed message longer than the requested maximum size.
+	ErrPaddingTooLarge = errors.New("dns: padded message exceeds maximum size")
+)
+
+// PreparePadding adds, replaces or refreshes the EDNS(0) PADDING option (RFC 7830)
+// so that the packed length of dns is a multiple of blockSize.
+//
+// The required padding is measured along an actual Pack of the message using the
+// same compression settings as the final encoding rather than estimated from
+// individual field lengths. Any existing PADDING option is removed first and a
+// single new one is appended at the end of the OPT RR, as recommended by RFC 7830;
+// the position of the OPT RR within the additional section and the order of all
+// other EDNS options are preserved. If the message has no OPT RR, one is created.
+//
+// The four option header bytes (option code and option length) are counted as
+// part of the message, so an already aligned message gains a full block of
+// padding instead of drifting off the boundary. When maxSize is greater than
+// zero it is the maximum acceptable packed length: if the aligned message would
+// be longer, PreparePadding returns ErrPaddingTooLarge and leaves dns untouched.
+// A maxSize of zero or less disables the size limit.
+//
+// blockSize must be greater than zero, and the message must contain at most one
+// OPT RR, otherwise PreparePadding returns an error without modifying dns.
+// The padding bytes themselves are zero.
+func (dns *Msg) PreparePadding(blockSize int, maxSize int) error {
+	if blockSize <= 0 {
+		return ErrPaddingBlockSize
+	}
+
+	// Work on a deep copy: the receiver is only replaced on success, so an
+	// error (for example an over-long aligned message or a pack failure) can
+	// never leave a half-modified message behind.
+	m := dns.Copy()
+
+	// Locate (or create) the single OPT RR.
+	optIndex := -1
+	tsigIndex := -1
+	for i, r := range m.Extra {
+		switch r.Header().Rrtype {
+		case TypeOPT:
+			if optIndex != -1 {
+				return ErrPaddingMultipleOPT
+			}
+			optIndex = i
+		case TypeTSIG:
+			tsigIndex = i
+		}
+	}
+
+	var opt *OPT
+	if optIndex != -1 {
+		opt = m.Extra[optIndex].(*OPT)
+	} else {
+		// Build an OPT RR and keep TSIG last in the additional section.
+		opt = &OPT{Hdr: RR_Header{Name: ".", Rrtype: TypeOPT}}
+		insert := len(m.Extra)
+		if tsigIndex != -1 {
+			insert = tsigIndex
+		}
+		m.Extra = append(m.Extra, nil)
+		copy(m.Extra[insert+1:], m.Extra[insert:])
+		m.Extra[insert] = opt
+	}
+
+	// Remove any padding that is already present, keeping the remaining
+	// options in their original order.
+	options := opt.Option[:0]
+	for _, o := range opt.Option {
+		if o.Option() != EDNS0PADDING {
+			options = append(options, o)
+		}
+	}
+	opt.Option = options
+
+	// Measure the message without padding along the real Pack path, so name
+	// compression is exactly the same as in the final encoding.
+	unpadded, err := m.Pack()
+	if err != nil {
+		return err
+	}
+
+	// padLen fills up to the next block boundary, counting the four bytes of
+	// the PADDING option header. An already aligned message therefore takes a
+	// full extra block (it can never fit, since the header alone crosses the
+	// boundary) and the result stays aligned.
+	padLen := blockSize - (len(unpadded)+4)%blockSize
+	if padLen == blockSize {
+		padLen = 0
+	}
+	opt.Option = append(opt.Option, &EDNS0_PADDING{Padding: make([]byte, padLen)})
+
+	padded, err := m.Pack()
+	if err != nil {
+		return err
+	}
+	if maxSize > 0 && len(padded) > maxSize {
+		return ErrPaddingTooLarge
+	}
+
+	// Defense in depth: recompute once if the measured length is unexpectedly
+	// not aligned (the padding option is the last wire element, so at most one
+	// correction is ever needed).
+	if len(padded)%blockSize != 0 {
+		padLen += blockSize - len(padded)%blockSize
+		opt.Option[len(opt.Option)-1] = &EDNS0_PADDING{Padding: make([]byte, padLen)}
+		padded, err = m.Pack()
+		if err != nil {
+			return err
+		}
+		if len(padded)%blockSize != 0 || (maxSize > 0 && len(padded) > maxSize) {
+			return ErrPaddingTooLarge
+		}
+	}
+
+	// Commit the prepared message into the receiver only after every check passed.
+	*dns = *m
+	return nil
+}
+
 // Extended DNS Error Codes (RFC 8914).
 const (
 	ExtendedErrorCodeOther uint16 = iota

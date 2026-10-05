@@ -239,6 +239,55 @@ Basic use pattern validating and replying to a message that has TSIG set.
 		w.WriteMsg(m)
 	}
 
+# TSIG SESSIONS
+
+The single-message TsigGenerate and TsigVerify functions sign and verify one
+message at a time. For a sequence of messages that are each individually signed
+- such as the messages on a TCP connection (RFC 8945 section 6) - a TsigSession
+provides explicit, stateful handling. A session chains the messages together:
+the MAC of the last confirmed message is used as the request MAC of the next
+one.
+
+A session is created with NewTsigSession, taking a TsigProvider (the session
+never sees the secret itself), a role (TsigInitiator or TsigResponder) and an
+injectable TsigClock (nil uses the system clock). The role determines the
+OrigId check applied to received messages, following RFC 8945 section 5.3:
+requests must have OrigId equal to the message header ID, responses must have
+OrigId equal to the ID of the request that was sent.
+
+The initiator signs a request with Prepare, sends the returned bytes, and calls
+Confirm once the send is known to have succeeded. Prepare does not advance the
+session state; the last confirmed MAC only moves forward when Confirm is called.
+If the send fails or its outcome is uncertain (for example a timeout), Invalidate
+must be called and the session must not be reused - a new session must be
+created.
+
+	clock := dns.TsigClockFunc(time.Now)
+	session := dns.NewTsigSession(provider, dns.TsigInitiator, clock)
+	m := new(dns.Msg)
+	m.SetQuestion("example.org.", dns.TypeA)
+	m.SetTsig("axfr.", dns.HmacSHA256, 300, time.Now().Unix())
+	out, pending, err := session.Prepare(m)
+	... // send out
+	if err != nil {
+		session.Invalidate() // the outcome is uncertain; do not reuse the session
+	} else {
+		session.Confirm(pending)
+	}
+
+The responder verifies each request with Verify. If verification fails the
+session state is unchanged and the previous MAC remains in force, so a correctly
+chained retry can still be verified. On success the last confirmed MAC advances
+to the MAC of the verified message.
+
+	session := dns.NewTsigSession(provider, dns.TsigResponder, clock)
+	tsig, err := session.Verify(wire)
+	if err != nil {
+		// state is unchanged; a correctly chained retry can still be verified
+	}
+
+The String method of TsigSession never reveals the secret or any MAC value.
+
 # PRIVATE RRS
 
 RFC 6895 sets aside a range of type codes for private use. This range is 65,280

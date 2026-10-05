@@ -69,6 +69,11 @@ var (
 	ErrSig           error = &Error{err: "bad signature"} // ErrSig indicates that a signature can not be cryptographically validated.
 	ErrSoa           error = &Error{err: "no SOA"}        // ErrSOA indicates that no SOA RR was seen when doing zone transfers.
 	ErrTime          error = &Error{err: "bad time"}      // ErrTime indicates a timing error in TSIG authentication.
+
+	// TSIG session errors (see TsigSession).
+	ErrTsigSessionInvalid error = &Error{err: "TSIG session is no longer valid"} // ErrTsigSessionInvalid indicates a TsigSession has been invalidated and can no longer be used.
+	ErrTsigSessionID      error = &Error{err: "TSIG OrigId does not match message ID"}
+	ErrTsigSessionPending error = &Error{err: "TSIG session has an unconfirmed send"}
 )
 
 // Id by default returns a 16-bit random number to be used as a message id. The

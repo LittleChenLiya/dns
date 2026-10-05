@@ -169,6 +169,13 @@ func TsigGenerate(m *Msg, secret, requestMAC string, timersOnly bool) ([]byte, s
 
 // TsigGenerateWithProvider is similar to TsigGenerate, but allows for a custom TsigProvider.
 func TsigGenerateWithProvider(m *Msg, provider TsigProvider, requestMAC string, timersOnly bool) ([]byte, string, error) {
+	return tsigGenerate(m, provider, requestMAC, timersOnly, uint64(time.Now().Unix()))
+}
+
+// tsigGenerate is the internal implementation of TsigGenerateWithProvider,
+// taking the current time ('now') as a parameter so that callers with an
+// injected clock (such as TsigSession) can control it.
+func tsigGenerate(m *Msg, provider TsigProvider, requestMAC string, timersOnly bool, now uint64) ([]byte, string, error) {
 	if m.IsTsig() == nil {
 		panic("dns: TSIG not last RR in additional")
 	}
@@ -180,7 +187,7 @@ func TsigGenerateWithProvider(m *Msg, provider TsigProvider, requestMAC string, 
 		return nil, "", err
 	}
 
-	buf, err := tsigBuffer(mbuf, rr, requestMAC, timersOnly)
+	buf, err := tsigBuffer(mbuf, rr, requestMAC, timersOnly, now)
 	if err != nil {
 		return nil, "", err
 	}
@@ -235,7 +242,7 @@ func tsigVerify(msg []byte, provider TsigProvider, requestMAC string, timersOnly
 		return err
 	}
 
-	buf, err := tsigBuffer(stripped, tsig, requestMAC, timersOnly)
+	buf, err := tsigBuffer(stripped, tsig, requestMAC, timersOnly, now)
 	if err != nil {
 		return err
 	}
@@ -260,10 +267,12 @@ func tsigVerify(msg []byte, provider TsigProvider, requestMAC string, timersOnly
 }
 
 // Create a wiredata buffer for the MAC calculation.
-func tsigBuffer(msgbuf []byte, rr *TSIG, requestMAC string, timersOnly bool) ([]byte, error) {
+// The 'now' parameter is used to stamp TimeSigned when it is unset, allowing
+// callers with an injected clock to control it.
+func tsigBuffer(msgbuf []byte, rr *TSIG, requestMAC string, timersOnly bool, now uint64) ([]byte, error) {
 	var buf []byte
 	if rr.TimeSigned == 0 {
-		rr.TimeSigned = uint64(time.Now().Unix())
+		rr.TimeSigned = now
 	}
 	if rr.Fudge == 0 {
 		rr.Fudge = 300 // Standard (RFC) default.

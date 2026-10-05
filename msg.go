@@ -379,6 +379,32 @@ func isRootLabel(s string, bs []byte, off, end int) bool {
 // When an error is encountered, the unpacked name will be discarded
 // and len(msg) will be returned as the offset.
 func UnpackDomainName(msg []byte, off int) (string, int, error) {
+	s, off1, err := unpackDomainName(msg, off, nil)
+	return s, off1, err
+}
+
+// UnpackDomainNameTrace unpacks a domain name exactly like
+// UnpackDomainName and additionally returns a trace of every step taken.
+// The trace is built during the single parse pass, so it records the
+// real label spans and pointer jumps rather than guessing them by
+// re-scanning the result. Each call allocates its own trace, so parallel
+// parses do not share report state.
+//
+// When an error is encountered the trace is incomplete: it ends at the
+// real failure node (the step whose Err is set), and the returned name
+// is discarded just like UnpackDomainName.
+func UnpackDomainNameTrace(msg []byte, off int) (string, int, error, *DomainNameTrace) {
+	trace := &DomainNameTrace{}
+	s, off1, err := unpackDomainName(msg, off, trace)
+	return s, off1, err, trace
+}
+
+// unpackDomainName is the shared implementation behind UnpackDomainName
+// and UnpackDomainNameTrace. It walks the name starting at the caller's
+// offset only; it never scans the rest of the packet looking for the
+// source of a name. When trace is non-nil it records each step as it
+// happens, so the trace reflects the actual bytes traversed.
+func unpackDomainName(msg []byte, off int, trace *DomainNameTrace) (string, int, error) {
 	s := make([]byte, 0, maxDomainNamePresentationLength)
 	off1 := 0
 	lenmsg := len(msg)
@@ -387,34 +413,42 @@ func UnpackDomainName(msg []byte, off int) (string, int, error) {
 Loop:
 	for {
 		if off >= lenmsg {
+			trace.addError(off, off, ErrBuf)
 			return "", lenmsg, ErrBuf
 		}
 		c := int(msg[off])
+		start := off
 		off++
 		switch c & 0xC0 {
 		case 0x00:
 			if c == 0x00 {
 				// end of name
+				trace.addRoot(start, off)
 				break Loop
 			}
 			// literal string
 			if off+c > lenmsg {
+				trace.addError(start, off, ErrBuf)
 				return "", lenmsg, ErrBuf
 			}
 			budget -= c + 1 // +1 for the label separator
 			if budget <= 0 {
+				trace.addError(start, off, ErrLongDomain)
 				return "", lenmsg, ErrLongDomain
 			}
+			label := make([]byte, 0, c)
 			for _, b := range msg[off : off+c] {
 				if isDomainNameLabelSpecial(b) {
-					s = append(s, '\\', b)
+					label = append(label, '\\', b)
 				} else if b < ' ' || b > '~' {
-					s = append(s, escapeByte(b)...)
+					label = append(label, escapeByte(b)...)
 				} else {
-					s = append(s, b)
+					label = append(label, b)
 				}
 			}
-			s = append(s, '.')
+			fragment := string(label) + "."
+			s = append(s, fragment...)
+			trace.addLabel(start, off+c, c, string(label), fragment)
 			off += c
 		case 0xC0:
 			// pointer to somewhere else in msg.
@@ -423,6 +457,7 @@ Loop:
 			// also, don't follow too many pointers --
 			// maybe there's a loop.
 			if off >= lenmsg {
+				trace.addError(start, off, ErrBuf)
 				return "", lenmsg, ErrBuf
 			}
 			c1 := msg[off]
@@ -431,14 +466,20 @@ Loop:
 				off1 = off
 			}
 			if ptr++; ptr > maxCompressionPointers {
-				return "", lenmsg, &Error{err: "too many compression pointers"}
+				err := &Error{err: "too many compression pointers"}
+				trace.addPointer(start, off, (c^0xC0)<<8|int(c1))
+				trace.failLast(err)
+				return "", lenmsg, err
 			}
 			// pointer should guarantee that it advances and points forwards at least
 			// but the condition on previous three lines guarantees that it's
 			// at least loop-free
-			off = (c^0xC0)<<8 | int(c1)
+			target := (c^0xC0)<<8 | int(c1)
+			trace.addPointer(start, off, target)
+			off = target
 		default:
 			// 0x80 and 0x40 are reserved
+			trace.addError(start, off, ErrRdata)
 			return "", lenmsg, ErrRdata
 		}
 	}

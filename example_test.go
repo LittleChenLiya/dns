@@ -147,3 +147,30 @@ func ExamplePrivateHandle() {
 	// ;; ANSWER SECTION:
 	// miek.nl.	3600	IN	APAIR	1.2.3.4 1.2.3.5
 }
+
+// ExampleUnpackDomainNameTrace shows how a name that ends in a
+// compression pointer is traced in one walk: the literal label, the
+// pointer jump, and the labels shared with an earlier name.
+func ExampleUnpackDomainNameTrace() {
+	// A tiny packet fragment with two names:
+	//   offset 0: "\x07example\x03com\x00" -> example.com.
+	//   offset 13: "\x03www" + a pointer to offset 0 -> www.example.com.
+	msg := []byte("\x07example\x03com\x00\x03www\xC0\x00")
+
+	name, off, trace, err := dns.UnpackDomainNameTrace(msg, 13)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("name: %s\n", name)
+	fmt.Printf("next offset: %d\n", off)
+	fmt.Print(trace)
+	// Output:
+	// name: www.example.com.
+	// next offset: 19
+	// 13-17 label[3]="www"
+	// 17-19 pointer -> 0
+	// 0-8 label[7]="example"
+	// 8-12 label[3]="com"
+	// 12 root
+	// name "www.example.com." next offset 19
+}

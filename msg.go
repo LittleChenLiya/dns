@@ -373,48 +373,271 @@ func isRootLabel(s string, bs []byte, off, end int) bool {
 // In theory, the pointers are only allowed to jump backward.
 // We let them jump anywhere and stop jumping after a while.
 
+// NameStepKind classifies a single step recorded while unpacking a
+// domain name.
+type NameStepKind int
+
+const (
+	// NameStepLabel is a literal (counted) label on the wire.
+	NameStepLabel NameStepKind = iota
+	// NameStepRoot is the terminating zero-length label of an
+	// absolute name.
+	NameStepRoot
+	// NameStepPointer is a two-octet compression pointer that
+	// redirected the walk to another offset in the message.
+	NameStepPointer
+)
+
+// NameStep is one step of the walk performed while unpacking a domain
+// name. Steps are recorded in the exact order in which the wire was
+// traversed: labels are interleaved with the compression pointers that
+// led to them, so no second scan is needed to explain where the name
+// came from.
+type NameStep struct {
+	// Kind identifies the step as a literal label, the root label or
+	// a compression pointer.
+	Kind NameStepKind
+
+	// Start is the absolute offset in msg where the step begins:
+	// the length octet for labels and the root label, or the first
+	// (0xC0) octet for pointers.
+	Start int
+	// End is the absolute offset immediately after the step on the
+	// wire, so End-Start is the number of msg octets the step
+	// consumed. For labels this is 1+len(Label), for the root label
+	// it is 1 and for a pointer it is 2.
+	End int
+
+	// Label holds the raw, unescaped label octets for label steps.
+	// Escaping is only presentation: len(Label) is the true number
+	// of wire octets and may differ from the length of the escaped
+	// form. It is empty for root and pointer steps, and the bytes
+	// are copied so the trace stays valid if msg is reused.
+	Label []byte
+	// Target is the absolute offset the pointer jumps to for
+	// pointer steps; it is -1 for other kinds.
+	Target int
+}
+
+// Span returns the number of msg octets consumed by the step, measured
+// on the original wire bytes rather than on the escaped presentation.
+func (s NameStep) Span() int { return s.End - s.Start }
+
+// DomainNameTrace is the single-pass trace of a UnpackDomainName walk.
+// A trace is allocated per call and never shared between parsers, so
+// it is safe to unpack multiple names concurrently.
+type DomainNameTrace struct {
+	// Steps is the ordered walk: every literal label, compression
+	// pointer and the final root label that produced the name.
+	Steps []NameStep
+	// Root is the offset of the terminating root label, or -1 if the
+	// walk never reached one.
+	Root int
+	// NextOffset is the offset just past the name encoding as seen by
+	// the caller: the first offset after the initial compression
+	// pointer when the name starts with one, otherwise the offset
+	// after the root label.
+	NextOffset int
+	// FailAt is the absolute msg offset of the octet where the walk
+	// failed (the next octet it needed), or -1 on success.
+	FailAt int
+	// FailStep, when non-empty, describes what the walk was trying to
+	// do when it failed.
+	FailStep string
+}
+
+// String renders a human-readable explanation of how the final name
+// was assembled: each label is shown with its real wire span, each
+// compression pointer shows its origin and destination, and the walk
+// ends either with the resulting name or with the failure node.
+func (t *DomainNameTrace) String() string {
+	var b strings.Builder
+	for _, st := range t.Steps {
+		switch st.Kind {
+		case NameStepLabel:
+			b.WriteString(strconv.Itoa(st.Start))
+			b.WriteString("-")
+			b.WriteString(strconv.Itoa(st.End))
+			b.WriteString(" label[")
+			b.WriteString(strconv.Itoa(len(st.Label)))
+			b.WriteString("]=\"")
+			b.WriteString(presentationLabel(st.Label))
+			b.WriteString("\"\n")
+		case NameStepRoot:
+			b.WriteString(strconv.Itoa(st.Start))
+			b.WriteString(" root\n")
+		case NameStepPointer:
+			b.WriteString(strconv.Itoa(st.Start))
+			b.WriteString("-")
+			b.WriteString(strconv.Itoa(st.End))
+			b.WriteString(" pointer -> ")
+			b.WriteString(strconv.Itoa(st.Target))
+			b.WriteString("\n")
+		}
+	}
+	// Reassemble the name from label steps in traversal order.
+	pres := make([]byte, 0, maxDomainNamePresentationLength)
+	labels := 0
+	for _, st := range t.Steps {
+		if st.Kind != NameStepLabel {
+			continue
+		}
+		pres = appendPresentationLabel(pres, st.Label)
+		labels++
+	}
+	if labels == 0 {
+		pres = append(pres, '.')
+	}
+	if t.FailAt >= 0 {
+		b.WriteString("incomplete name \"")
+		// Drop the trailing separator for the partial presentation.
+		if n := len(pres); n > 0 && pres[n-1] == '.' {
+			pres = pres[:n-1]
+		}
+		b.Write(pres)
+		b.WriteString("\" failed at offset ")
+		b.WriteString(strconv.Itoa(t.FailAt))
+		if t.FailStep != "" {
+			b.WriteString(" (")
+			b.WriteString(t.FailStep)
+			b.WriteString(")")
+		}
+		return b.String()
+	}
+	b.WriteString("name \"")
+	b.Write(pres)
+	b.WriteString("\" next offset ")
+	b.WriteString(strconv.Itoa(t.NextOffset))
+	return b.String()
+}
+
 // UnpackDomainName unpacks a domain name into a string. It returns
 // the name, the new offset into msg and any error that occurred.
 //
 // When an error is encountered, the unpacked name will be discarded
 // and len(msg) will be returned as the offset.
 func UnpackDomainName(msg []byte, off int) (string, int, error) {
+	s, off1, _, err := unpackDomainName(msg, off, nil)
+	if err != nil {
+		return "", len(msg), err
+	}
+	return s, off1, nil
+}
+
+// UnpackDomainNameTrace works like UnpackDomainName but additionally
+// returns a trace of the single-pass walk over msg. The trace records
+// the real byte span of every label (raw label octets, not the escaped
+// presentation length), the origin and target of every compression
+// pointer, and where the final name starts and ends. Parsing only
+// reads the name at off as given by the caller; it never rescans the
+// message to guess where pieces came from.
+//
+// On error the returned name is discarded (empty) and the offset is
+// len(msg), exactly as for UnpackDomainName. The trace is still
+// returned and marked incomplete: it contains the steps reached before
+// the failure and FailAt/FailStep identify the real failing node,
+// including self pointers, pointer loops and out-of-range access. The
+// trace value is unique to this call, so concurrent parses never share
+// report state.
+func UnpackDomainNameTrace(msg []byte, off int) (string, int, *DomainNameTrace, error) {
+	s, off1, tr, err := unpackDomainName(msg, off, &DomainNameTrace{Root: -1, FailAt: -1})
+	if err != nil {
+		return "", len(msg), tr, err
+	}
+	return s, off1, tr, nil
+}
+
+// appendPresentationLabel appends the presentation (escaped) form of a
+// raw label followed by a '.' separator.
+func appendPresentationLabel(s, label []byte) []byte {
+	for _, b := range label {
+		if isDomainNameLabelSpecial(b) {
+			s = append(s, '\\', b)
+		} else if b < ' ' || b > '~' {
+			s = append(s, escapeByte(b)...)
+		} else {
+			s = append(s, b)
+		}
+	}
+	return append(s, '.')
+}
+
+// presentationLabel returns the escaped presentation of a raw label,
+// without a trailing separator.
+func presentationLabel(label []byte) string {
+	s := make([]byte, 0, len(label))
+	s = appendPresentationLabel(s, label)
+	if n := len(s); n > 0 && s[n-1] == '.' {
+		s = s[:n-1]
+	}
+	return string(s)
+}
+
+func unpackDomainName(msg []byte, off int, tr *DomainNameTrace) (string, int, *DomainNameTrace, error) {
 	s := make([]byte, 0, maxDomainNamePresentationLength)
 	off1 := 0
 	lenmsg := len(msg)
 	budget := maxDomainNameWireOctets
 	ptr := 0 // number of pointers followed
+
+	// fail returns the same results as the historical unpacker and,
+	// when tracing, marks the real failing node.
+	fail := func(failAt int, what string, err error) (string, int, *DomainNameTrace, error) {
+		if tr != nil {
+			tr.FailAt = failAt
+			tr.FailStep = what
+		}
+		return "", lenmsg, tr, err
+	}
+
 Loop:
 	for {
 		if off >= lenmsg {
-			return "", lenmsg, ErrBuf
+			if tr != nil {
+				return fail(off, "read label length octet", ErrBuf)
+			}
+			return "", lenmsg, nil, ErrBuf
 		}
+		start := off
 		c := int(msg[off])
 		off++
 		switch c & 0xC0 {
 		case 0x00:
 			if c == 0x00 {
 				// end of name
+				if tr != nil {
+					tr.Steps = append(tr.Steps, NameStep{Kind: NameStepRoot, Start: start, End: off, Target: -1})
+					tr.Root = start
+				}
 				break Loop
 			}
 			// literal string
 			if off+c > lenmsg {
-				return "", lenmsg, ErrBuf
+				if tr != nil {
+					// Record the span against the bytes actually available so
+					// the trace shows how far the label ran past the buffer.
+					avail := msg[off:]
+					cp := make([]byte, len(avail))
+					copy(cp, avail)
+					tr.Steps = append(tr.Steps, NameStep{Kind: NameStepLabel, Start: start, End: lenmsg, Label: cp, Target: -1})
+					return fail(off, "read label octets", ErrBuf)
+				}
+				return "", lenmsg, nil, ErrBuf
 			}
 			budget -= c + 1 // +1 for the label separator
+			raw := msg[off : off+c]
+			s = appendPresentationLabel(s, raw)
+			if tr != nil {
+				cp := make([]byte, c)
+				copy(cp, raw)
+				tr.Steps = append(tr.Steps, NameStep{Kind: NameStepLabel, Start: start, End: off + c, Label: cp, Target: -1})
+			}
 			if budget <= 0 {
-				return "", lenmsg, ErrLongDomain
-			}
-			for _, b := range msg[off : off+c] {
-				if isDomainNameLabelSpecial(b) {
-					s = append(s, '\\', b)
-				} else if b < ' ' || b > '~' {
-					s = append(s, escapeByte(b)...)
-				} else {
-					s = append(s, b)
+				if tr != nil {
+					return fail(start, "domain name too long", ErrLongDomain)
 				}
+				return "", lenmsg, nil, ErrLongDomain
 			}
-			s = append(s, '.')
 			off += c
 		case 0xC0:
 			// pointer to somewhere else in msg.
@@ -423,32 +646,59 @@ Loop:
 			// also, don't follow too many pointers --
 			// maybe there's a loop.
 			if off >= lenmsg {
-				return "", lenmsg, ErrBuf
+				if tr != nil {
+					return fail(off, "read compression pointer second octet", ErrBuf)
+				}
+				return "", lenmsg, nil, ErrBuf
 			}
 			c1 := msg[off]
 			off++
 			if ptr == 0 {
 				off1 = off
 			}
-			if ptr++; ptr > maxCompressionPointers {
-				return "", lenmsg, &Error{err: "too many compression pointers"}
+			target := (c^0xC0)<<8 | int(c1)
+			if tr != nil {
+				tr.Steps = append(tr.Steps, NameStep{Kind: NameStepPointer, Start: start, End: off, Target: target})
+			}
+			ptr++
+			if ptr > maxCompressionPointers {
+				if tr != nil {
+					return fail(target, "follow compression pointer: too many compression pointers", &Error{err: "too many compression pointers"})
+				}
+				return "", lenmsg, nil, &Error{err: "too many compression pointers"}
+			}
+			if target >= lenmsg {
+				if tr != nil {
+					return fail(target, "jump to compression pointer target", ErrBuf)
+				}
+				return "", lenmsg, nil, ErrBuf
 			}
 			// pointer should guarantee that it advances and points forwards at least
 			// but the condition on previous three lines guarantees that it's
 			// at least loop-free
-			off = (c^0xC0)<<8 | int(c1)
+			off = target
 		default:
 			// 0x80 and 0x40 are reserved
-			return "", lenmsg, ErrRdata
+			if tr != nil {
+				return fail(start, "reserved label type bits", ErrRdata)
+			}
+			return "", lenmsg, nil, ErrRdata
 		}
 	}
 	if ptr == 0 {
 		off1 = off
 	}
 	if len(s) == 0 {
-		return ".", off1, nil
+		if tr != nil {
+			tr.NextOffset = off1
+			return ".", off1, tr, nil
+		}
+		return ".", off1, nil, nil
 	}
-	return string(s), off1, nil
+	if tr != nil {
+		tr.NextOffset = off1
+	}
+	return string(s), off1, tr, nil
 }
 
 func packTxt(txt []string, msg []byte, offset int) (int, error) {
